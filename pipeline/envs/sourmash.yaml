@@ -1,0 +1,4 @@
+channels:
+ - bioconda
+dependencies:
+ - sourmash=2.0.0a1
