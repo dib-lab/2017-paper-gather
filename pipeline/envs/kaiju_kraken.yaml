@@ -1,0 +1,5 @@
+channels:
+ - bioconda
+dependencies:
+ - kraken-all=0.10.6_eaf8fb68
+ - kaiju=1.5.0

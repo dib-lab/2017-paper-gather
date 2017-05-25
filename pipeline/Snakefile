@@ -1,0 +1,18 @@
+from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
+HTTP = HTTPRemoteProvider()
+
+rule all:
+    input: 'data/podar-reference-genomes-updated-2017.05.20.tar.gz'
+
+
+#    output: 'test'
+#    conda: 'envs/kaiju_kraken.yaml'
+#    shell: 'touch {output}'
+
+rule download_podar:
+    output: 'data/podar-reference-genomes-updated-2017.05.20.tar.gz'
+    input: HTTP.remote('files.osf.io/v1/resources/vk4fa/providers/osfstorage/59203210b83f69024d8eb9aa?direct=true&action=download')
+    shell: '''
+        mkdir -p data
+        mv {input} {output}
+    '''
