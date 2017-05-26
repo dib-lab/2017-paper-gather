@@ -126,6 +126,9 @@ Because of the low false positive rate, this may be useful for detection of know
 
 You can identify known genomes in metagenomes very quickly.
 
+As reference data sets grow, something that can quickly and precisely
+search millions (with n+1 capability) is important.
+
 # Additional material
 
 
