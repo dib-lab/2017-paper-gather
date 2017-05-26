@@ -3,20 +3,19 @@ HTTP = HTTPRemoteProvider()
 
 rule all:
     input:
+        'outputs/gather.reads.x.podar.csv',
         'data/podar-reference-genomes-updated-2017.05.20.tar.gz',
         'data/CAMI_medium.tar',
         'data/CAMI_high.tar'
 
-#    output: 'test'
-#    conda: 'envs/kaiju_kraken.yaml'
-#    shell: 'touch {output}'
 
 rule download_podar:
     output: 'data/podar-reference-genomes-updated-2017.05.20.tar.gz'
-    input: HTTP.remote('files.osf.io/v1/resources/vk4fa/providers/osfstorage/59203210b83f69024d8eb9aa?direct=true&action=download')
+    input: HTTP.remote('files.osf.io/v1/resources/vk4fa/providers/osfstorage/59203210b83f69024d8eb9aa')
     shell: '''
-        mkdir -p data
-        mv {input} {output}
+        mkdir -p data/podar
+        cp '{input}' {output}
+        tar xf {output} -C data/podar
     '''
 
 rule download_cami:
@@ -24,5 +23,66 @@ rule download_cami:
     input: HTTP.remote('s3-eu-west-1.amazonaws.com/cami-data-eu/CAMI_{complexity}.tar')
     shell: '''
         mkdir -p data
-        mv {input} {output}
+        mv '{input}' {output}
     '''
+
+rule build_index:
+    output: 'outputs/podar-genomes-k{ksize}.sbt.json'
+    input: expand('outputs/sigs/podar/{contig}.fa.sig', contig=range(0, 64))
+    params:
+        ksize='{ksize}',
+        sbt_name='outputs/podar-genomes-k{ksize}'
+    conda: 'envs/sourmash.yaml'
+    shell: """
+        sourmash index -k {params.ksize} {params.sbt_name} {input}
+    """
+
+rule compute_sig:
+    output: 'outputs/sigs/{db}/{filename}.fa.sig'
+    input: 'data/{db}/{filename}.fa'
+    conda: 'envs/sourmash.yaml'
+    shell: '''
+        sourmash compute --scaled 10000 \
+                         -k 21,31,41,51 \
+                         --name-from-first \
+                         -o {output} \
+                         {input}
+    '''
+
+rule compute_reads_sig:
+    output: 'outputs/sigs/podar-reads.10k.sig'
+    input: 'data/podar-reads.fastq.gz'
+    conda: 'envs/sourmash.yaml'
+    shell: '''
+        sourmash compute --scaled 10000 \
+                         -k 21,31,41,51 \
+                         --name-from-first \
+                         -o {output} \
+                         {input}
+    '''
+
+rule run_gather:
+    output: 'outputs/gather.reads.x.podar.csv'
+    input:
+        sig='outputs/sigs/podar-reads.10k.sig',
+        sbt='outputs/podar-genomes-k31.sbt.json'
+    conda: 'envs/sourmash.yaml'
+    shell: """
+        mkdir -p `dirname {output}`
+        sourmash gather {input.sig} \
+                        {input.sbt} \
+                        -o {output}
+    """
+
+rule download_podar_reads:
+    output: 'data/podar-reads.fastq.gz'
+    conda: 'envs/sourmash.yaml'
+    shell: """
+        fastq-dump -Z --gzip --skip-technical \
+                   --readids \
+                   --read-filter pass \
+                   --dumpbase \
+                   --split-files \
+                   --clip \
+                   -A SRR606249 > {output}
+    """
