@@ -1,12 +1,15 @@
 from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
+
 HTTP = HTTPRemoteProvider()
+
+localrules: download_podar, download_podar_reads
 
 rule all:
     input:
         'outputs/gather.reads.x.podar.csv',
         'data/podar-reference-genomes-updated-2017.05.20.tar.gz',
-        'data/CAMI_medium.tar',
-        'data/CAMI_high.tar'
+#        'data/CAMI_medium.tar',
+#        'data/CAMI_high.tar'
 
 
 rule download_podar:

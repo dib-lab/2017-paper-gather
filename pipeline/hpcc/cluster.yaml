@@ -1,0 +1,6 @@
+__default__:
+  mem: 1G
+  time: '01:00:00'
+
+compute_reads_sig:
+  time: '4:00:00'
