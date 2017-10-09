@@ -7,6 +7,10 @@ localrules: download_podar, download_podar_reads
 rule all:
     input:
         'outputs/gather.reads.x.podar.csv',
+        'data/kraken_db/database.idx',
+        'data/kraken_db/database.jdb',
+        'data/kraken_db/database.kdb',
+        'outputs/sbt/kraken-k21.dist',
         'data/podar-reference-genomes-updated-2017.05.20.tar.gz',
 #        'data/CAMI_medium.tar',
 #        'data/CAMI_high.tar'
@@ -89,3 +93,68 @@ rule download_podar_reads:
                    --clip \
                    -A SRR606249 > {output}
     """
+
+
+####
+# These rules are for working with kraken.
+#  - We download the data they use in their DB (seqs and taxonomy)
+#  - Build the DB
+####
+
+rule download_kraken_genomes:
+    output: dynamic("data/kraken_db/library/{kingdom}/{species}/{genome}.fna")
+    conda: 'envs/kaiju_kraken.yaml'
+    shell: """
+        kraken-build --download-library bacteria --db data/kraken_db
+        kraken-build --download-library viruses --db data/kraken_db
+    """
+
+rule download_kraken_taxonomy:
+    output: "data/kraken_db/taxonomy/nodes.dmp"
+    conda: 'envs/kaiju_kraken.yaml'
+    shell: """
+        kraken-build --download-taxonomy --db data/kraken_db
+    """
+
+rule build_kraken_db:
+    input:
+        "data/kraken_db/taxonomy/nodes.dmp",
+        dynamic("data/kraken_db/library/{kingdom}/{species}/{genome}.fna")
+    output:
+        'data/kraken_db/database.idx',
+        'data/kraken_db/database.jdb',
+        'data/kraken_db/database.kdb'
+    conda: 'envs/kaiju_kraken.yaml'
+    threads: 16
+    shell: """
+        kraken-build --build --threads {threads} --db data/kraken_db
+    """
+
+####
+# Since we still have the data for the kraken DB, we use it to build an SBT too.
+#  - Calculate signatures for each dataset
+#  - Compare to build a distance matrix
+#  - Use fastcluster to build a tree skeleton
+#  - Use the skeleton to build the SBT
+####
+
+rule compute_kraken_sigs:
+    output: 'outputs/sigs/kraken/{kingdom}/{species}/{genome}.fna.sig'
+    input: "data/kraken_db/library/{kingdom}/{species}/{genome}.fna"
+    conda: 'envs/sourmash.yaml'
+    shell: '''
+        sourmash compute --scaled 10000 \
+                         -k 21,31,41,51 \
+                         --name-from-first \
+                         -o {output} \
+                         {input}
+    '''
+
+rule build_distance_matrix:
+    output: 'outputs/sbt/kraken-k{ksize}.dist'
+    input: dynamic("outputs/sigs/kraken/{kingdom}/{species}/{genome}.fna.sig")
+    params: ksize="{ksize}"
+    conda: 'envs/sourmash.yaml'
+    shell: '''
+        sourmash compare -k {params.ksize} --dna --output {output} {input}
+    '''
