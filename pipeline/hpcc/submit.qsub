@@ -17,7 +17,7 @@ QSUB="$QSUB -o $logdir -e $logdir -A ged"
 snakemake --unlock
 
 snakemake                               \
-    -j 3000
+    -j 3000                             \
     --local-cores 4                     \
     --cluster-config hpcc/cluster.yaml  \
     --js hpcc/jobscript.sh              \

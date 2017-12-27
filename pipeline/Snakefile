@@ -1,3 +1,5 @@
+import os
+
 from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
 
 HTTP = HTTPRemoteProvider()
@@ -94,6 +96,32 @@ rule download_podar_reads:
                    -A SRR606249 > {output}
     """
 
+####
+#
+####
+
+rule download_sourmash_dbs:
+    output: 'data/sourmash/{database}-k{ksize}.sbt.json'
+    input: HTTP.remote('s3-us-west-1.amazonaws.com/spacegraphcats.ucdavis.edu/microbe-{database}-sbt-k{ksize}-2017.05.09.tar.gz')
+    shell: '''
+        tar xf {input} -C data/sourmash
+    '''
+
+####
+# Rules for downloading i100
+#  http://www.bork.embl.de/~mende/simulated_data/
+#
+####
+
+rule download_i100:
+    output: 'data/i100/{}.fq.gz'
+    input: HTTP.remote('www.bork.embl.de/~mende/simulated_data/{}.fq.gz')
+    shell: '''
+        mkdir -p data/podar
+        cp '{input}' {output}
+        tar xf {output} -C data/podar
+    '''
+
 
 ####
 # These rules are for working with kraken.
@@ -158,3 +186,37 @@ rule build_distance_matrix:
     shell: '''
         sourmash compare -k {params.ksize} --dna --output {output} {input}
     '''
+
+###
+#
+###
+
+rule kraken_podar_query:
+    input:
+        'data/kraken_db/database.jdb',
+        'data/kraken_db/database.kdb',
+        kraken_idx='data/kraken_db/database.idx',
+        podar_reads='data/podar-reads.fastq.gz'
+    output: 'outputs/queries/kraken.out'
+    conda: 'envs/kaiju_kraken.yaml'
+    threads: 16
+    shell: """
+        kraken --db `dirname {input.kraken_idx}` --fastq-input --gzip-compressed --preload --threads {threads} {input.podar_reads} > {output}
+    """
+
+rule sourmash_gather_podar_query:
+    input:
+        refseq_db='data/sourmash/refseq-k31.sbt.json',
+        genbank_db='data/sourmash/genbank-k31.sbt.json',
+        podar_sigs='outputs/sigs/podar-reads.10k.sig'
+    output: 'outputs/queries/gather.out'
+    conda: 'envs/sourmash.yaml'
+    threads: 1
+    shell: """
+        sourmash gather -k 31 \
+                        --scaled 10000 \
+                        {input.podar_sigs} \
+                        {input.refseq_db} \
+                        {input.genbank_db} \
+                        -o {output}
+    """
