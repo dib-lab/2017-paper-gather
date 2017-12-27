@@ -1,0 +1,4 @@
+module swap GNU GNU/6.2
+module load anaconda
+module unload Python
+source activate snakemake
