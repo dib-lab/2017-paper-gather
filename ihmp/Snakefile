@@ -1,0 +1,7 @@
+include: 'snakefile/data.snakefile'
+include: 'snakefile/classify.snakefile'
+
+rule all:
+    input:
+        expand('outputs/sigmaps/{sample}.scaled2k.sig'),
+        expand('outputs/sigmaps/{sample}.sigmap')
