@@ -41,26 +41,31 @@ rule download_databases:
 subworkflow data_snakefile:
     workdir: "."
     snakefile: "snakefiles/data.snakefile"
-    
+
+rule kmer_trim_data:
+    input: data_snakefile('inputs/data/{sample}.fastq.gz')
+    output: 'outputs/quality/{sample}.fq.gz'
+    message: '--- kmer trim reads'
+    conda: 'env.yml'
+    log: 'outputs/quality/{sample}_trim.log'
+    benchmark: 'benchmarks/{sample}.trim.benchmark.txt'
+    shell:'''
+    trim-low-abund.py -C 4 -Z 18 -V -M 2e9 {input}
+    '''
+
 rule calculate_signatures:
-    input:
-        files = data_snakefile('inputs/data/{sample}.fastq.gz')
+    input: 'outputs/quality/{sample}.fq.gz'
     output:
         sig = 'outputs/sigmaps/{sample}.scaled2k.sig',
         sigmap = 'outputs/sigmaps/{sample}.sigmap'
-    message:
-        '--- Compute sourmash signatures using quality trimmed data.'
+    message: '--- Compute sourmash signatures using quality trimmed data.'
     conda: 'env.yml'
-    #singularity:
-    #    'docker://quay.io/biocontainers/sourmash:2.0.0a3--py36_0'
-    log:
-        'outputs/sigmaps/{sample}_compute.log'
-    benchmark:
-        'benchmarks/{sample}.compute.benchmark.txt'
-    shell:
-        '''
-        sourmash compute -o {output.sig} --scaled 2000 -k 21,31,51 --track-abundance --hash-to-reads {output.sigmap} {input.files}
-        '''
+    #singularity: 'docker://quay.io/biocontainers/sourmash:2.0.0a3--py36_0'
+    log: 'outputs/sigmaps/{sample}_compute.log'
+    benchmark: 'benchmarks/{sample}.compute.benchmark.txt'
+    shell:'''
+    sourmash compute -o {output.sig} --scaled 2000 -k 21,31,51 --track-abundance --hash-to-reads {output.sigmap} {input}
+    '''
 
 rule gather:
     input: 
