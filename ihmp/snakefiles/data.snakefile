@@ -20,14 +20,19 @@ links = {
     'HSM67VI9.fastq.gz' : 'https://ibdmdb.org/tunnel/static/HMP2/WGS/1750/HSM67VI9.fastq.gz',
     'MSMA26AV.fastq.gz' : 'https://ibdmdb.org/tunnel/static/HMP2/WGS/1750/MSMA26AV.fastq.gz'}
 
+SAMPLES = ['HSMA33OT',
+'HSM67VI9',
+'MSMA26AV']
+
 # rule all:
 #     input:
 #         # expand generates the list of the final files we want
 #         expand(os.path.join("inputs/data/", "{chainfile}"), chainfile=links.keys())
         
-# Make this association accessible via a function of wildcards
+# Make association between output and source link accessible via a function of wildcards
 def chainfile2link(wildcards):
     return links[wildcards.chainfile]
+    
 
 rule download_samples:
     output:
@@ -35,9 +40,8 @@ rule download_samples:
     message:
         '--- Download pre-quality trimmed data from ibdmdb.org. As stated on the website, data is "filtered for quality and error checked for completeness."'
     params:
-        # using a function of wildcards in params
-        link = chainfile2link,
-    shell:
-        """
-        wget {params.link} -O {output}
-        """
+        # use a function of wildcards in params
+        link = chainfile2link
+    shell:'''
+    wget {params.link} -O {output}
+    '''

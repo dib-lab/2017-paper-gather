@@ -9,7 +9,7 @@ Latest modification: Mon Feb 5
 
 SAMPLES = ['HSMA33OT',
 'HSM67VI9',
-'MSMA26AV',]
+'MSMA26AV']
 
 import os
                              
@@ -26,7 +26,7 @@ rule download_databases:
     output:
         os.path.join('inputs/databases/', '{chainfile}')
     message:
-        '--- Downloading Data.'
+        '--- download and unpack gather databases.'
     params:
         # using a function of wildcards in params
         link = chainfile2link,
@@ -121,7 +121,7 @@ rule get_reads_of_un_hashes:
 
 rule grab_reads_of_un_hashes:
     input: 
-        fq='inputs/data/{sample}.fastq.gz',
+        fq = data_snakefile('inputs/data/{sample}.fastq.gz'),
         readnames = 'outputs/unassigned/{sample}.un.txt'
     output: 'outputs/unassigned/{sample}.un.fq'
     message: '--- Grab reads from unassigned hashes'
@@ -131,4 +131,35 @@ rule grab_reads_of_un_hashes:
     shell: '''
     seqtk subseq {input.fq} {input.readnames} > {output}
     '''
-                
+
+rule assemble_unassigned:
+    input: 'outputs/unassigned/{sample}.un.fq'
+    output: 'outputs/megahit/{sample}.contigs.fa'
+    message: '--- Assemble reads from unassigned hashes with MegaHit'
+    log: 'outputs/megahit/{sample}.megahit.log'
+    benchmark: 'benchmarks/{sample}_megahit.benchmark.txt'
+    conda: 'env.yml'
+    params:
+        output_folder = 'outputs/megahit'
+    shell:'''
+    # megahit does not allow force overwrite, so each assembly needs to take place in it's own directory.
+    megahit -r {input} --min-contig-len 142 --out-dir {wildcards.sample} --out-prefix {wildcards.sample} 
+    # move the final assembly to a folder containing all assemblies
+    mv {wildcards.sample}/{wildcards.sample}.contigs.fa {params.output_folder}/{wildcards.sample}.contigs.fa
+    # remove the original megahit assembly folder, which is in the main directory.
+    rm -rf {wildcards.sample}
+    '''
+
+rule prokka_unassigned_assemblies:
+    input: 'outputs/megahit/{sample}.contigs.fa'
+    output: 'outputs/prokka/{sample}.faa'
+    message: '--- Annotate megahit assemblies'
+    log: 'outputs/prokka/{sample}.prokka.log'
+    benchmark: 'benchmarks/{sample}_prokka.benchmark.txt'
+    conda: 'env.yml'
+    params: output_folder = 'outputs/prokka'
+    shell:'''
+    prokka {input} --outdir {params.output_folder} --prefix {wildcards.sample} --metagenome --force --locustag {wildcards.sample}
+    touch {output}
+    '''
+     
