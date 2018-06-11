@@ -50,7 +50,7 @@ rule kmer_trim_data:
     log: 'outputs/quality/{sample}_trim.log'
     benchmark: 'benchmarks/{sample}.trim.benchmark.txt'
     shell:'''
-    trim-low-abund.py -C 4 -Z 18 -V -M 2e9 {input}
+    trim-low-abund.py -C 4 -Z 18 -V -M 4e9 --gzip -o {output} {input}
     '''
 
 rule calculate_signatures:
@@ -75,13 +75,10 @@ rule gather:
         gather = 'outputs/gather/refseq/{sample}.gather',
         matches = 'outputs/gather/matches/{sample}.matches', 
         un = 'outputs/gather/unassigned/{sample}.un'
-    message:
-        '--- Classify signatures with gather.'
+    message: '--- Classify signatures with gather.'
     conda: 'env.yml'
-    log:
-        'outputs/gather/{sample}_gather.log'
-    benchmark:
-        'benchmarks/{sample}.gather.benchmark.txt'
+    log: 'outputs/gather/{sample}_gather.log'
+    benchmark: 'benchmarks/{sample}.gather.benchmark.txt'
     shell:'''
     sourmash gather -o {output.gather} --save-matches {output.matches} --output-unassigned {output.un} --scaled 2000 -k 51 --ignore-abundance {input.sig} {input.db}
     '''
@@ -168,3 +165,39 @@ rule prokka_unassigned_assemblies:
     touch {output}
     '''
      
+rule grab_gather_genomes:
+    input:
+        gather = 'outputs/gather/refseq/{sample}.gather',
+        db = 'inputs/databases/refseq-d2-k51.sbt.json'
+    output: 'outputs/gather_genome_matches/{sample}.txt'
+    message: '--- Grab names of genome fasta files that were output as matches by gather'
+    log: 'outputs/'
+    benchmark: 'benchmarks/{sample}_grab_gather.benchmark.txt'
+    conda: 'env.yml'
+    run:
+        import pandas as pd
+        import os
+        import glob
+        from sourmash import signature 
+        
+        gather = pd.read_csv(str(input))
+        
+        genome_files = list()
+        for md5 in gather['md5']:
+            for file in glob.glob(f'inputs/databases/.sbt.refseq-d2-k51/{md5}'):
+                sigfp = open(file, 'rt')
+                siglist = list(signature.load_signatures(sigfp))
+                loaded_sig = siglist[0]
+                genome_files.append(loaded_sig.d['filename'])
+        
+        
+        with open(str(output), 'w') as file_handler:
+            for i in genome_files:
+                file_handler.write("{}\n".format(i))
+
+rule subtract_genomes_from_reads:
+    input: 
+        genome_files = 'outputs/gather_genome_matches/{sample}.txt',
+        reads = 'inputs/data/{sample}.fastq.gz'
+    output: 'outputs/subtracts/{sample}.fastq.gz.donut.fa'
+    output:
