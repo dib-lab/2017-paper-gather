@@ -82,96 +82,15 @@ rule gather:
     shell:'''
     sourmash gather -o {output.gather} --save-matches {output.matches} --output-unassigned {output.un} --scaled 2000 -k 51 --ignore-abundance {input.sig} {input.db}
     '''
-
-rule get_reads_of_un_hashes:
-    input: 
-        sigmap='outputs/sigmaps/{sample}.sigmap',
-        un='outputs/gather/unassigned/{sample}.un'
-    output: 'outputs/unassigned/{sample}.un.txt'
-    message: '--- Map unassigned hashes back to reads' 
-    log: 'outputs/unassigned/{sample}.log'
-    benchmark: 'benchmarks/{sample}.sigmap.benchmark.txt'
-    run:
-        import json
-        from sourmash import signature
-        
-        # import file with hash mappings
-        with open(input.sigmap) as json_data:
-            sigmap = json.load(json_data)
-        
-        # import the sourmash signature
-        sigfp = open(input.un, 'rt')
-        siglist = list(signature.load_signatures(sigfp))
-        loaded_sig = siglist[0]
-        
-        lst = []
-        for min in loaded_sig.minhash.get_mins():
-            tmp = sigmap.get(str(min))
-            lst.append(tmp)
-        
-        # filter out Nones
-        lst = [x for x in lst if x is not None]
-        # grab only the read name from the list 
-        read_lst = [[t[0] for t in l] for l in lst]
-        # flatten the list
-        flat = [y for x in read_lst for y in x]
-        
-        # write to a file, one read per line
-        with open(str(output), 'w') as file_handler:
-            for i in flat:
-                file_handler.write("{}\n".format(i))
-
-rule grab_reads_of_un_hashes:
-    input: 
-        fq = data_snakefile('inputs/data/{sample}.fastq.gz'),
-        readnames = 'outputs/unassigned/{sample}.un.txt'
-    output: 'outputs/unassigned/{sample}.un.fq'
-    message: '--- Grab reads from unassigned hashes'
-    log: 'outputs/unassigned/{sample}_seqtk.log}'
-    benchmark: 'benchmarks/{sample}.seqtk.benchmark.txt'
-    conda: 'env.yml'
-    shell: '''
-    seqtk subseq {input.fq} {input.readnames} > {output}
-    '''
-
-rule assemble_unassigned:
-    input: 'outputs/unassigned/{sample}.un.fq'
-    output: 'outputs/megahit/{sample}.contigs.fa'
-    message: '--- Assemble reads from unassigned hashes with MegaHit'
-    log: 'outputs/megahit/{sample}.megahit.log'
-    benchmark: 'benchmarks/{sample}_megahit.benchmark.txt'
-    conda: 'env.yml'
-    params:
-        output_folder = 'outputs/megahit'
-    shell:'''
-    # megahit does not allow force overwrite, so each assembly needs to take place in it's own directory.
-    megahit -r {input} --min-contig-len 142 --out-dir {wildcards.sample} --out-prefix {wildcards.sample} 
-    # move the final assembly to a folder containing all assemblies
-    mv {wildcards.sample}/{wildcards.sample}.contigs.fa {params.output_folder}/{wildcards.sample}.contigs.fa
-    # remove the original megahit assembly folder, which is in the main directory.
-    rm -rf {wildcards.sample}
-    '''
-
-rule prokka_unassigned_assemblies:
-    input: 'outputs/megahit/{sample}.contigs.fa'
-    output: 'outputs/prokka/{sample}.faa'
-    message: '--- Annotate megahit assemblies'
-    log: 'outputs/prokka/{sample}.prokka.log'
-    benchmark: 'benchmarks/{sample}_prokka.benchmark.txt'
-    conda: 'env.yml'
-    params: output_folder = 'outputs/prokka'
-    shell:'''
-    prokka {input} --outdir {params.output_folder} --prefix {wildcards.sample} --metagenome --force --locustag {wildcards.sample}
-    touch {output}
-    '''
      
-rule grab_gather_genomes:
+
+rule find_gather_genome_matches:
     input:
         gather = 'outputs/gather/refseq/{sample}.gather',
         db = 'inputs/databases/refseq-d2-k51.sbt.json'
     output: 'outputs/gather_genome_matches/{sample}.txt'
     message: '--- Grab names of genome fasta files that were output as matches by gather'
-    log: 'outputs/'
+    log: 'outputs/gather_genome_matches/{sample}_genome_matches.log'
     benchmark: 'benchmarks/{sample}_grab_gather.benchmark.txt'
     conda: 'env.yml'
     run:
@@ -195,9 +114,47 @@ rule grab_gather_genomes:
             for i in genome_files:
                 file_handler.write("{}\n".format(i))
 
+
 rule subtract_genomes_from_reads:
     input: 
         genome_files = 'outputs/gather_genome_matches/{sample}.txt',
         reads = 'inputs/data/{sample}.fastq.gz'
     output: 'outputs/subtracts/{sample}.fastq.gz.donut.fa'
-    output:
+    message: '--- Subtract genomes found by gather from reads'
+    log: 'outputs/subtracts/{sample}.subtract.log'
+    benchmark: 'benchmarks/{sample}_subtract_gather_genomes.benchmark.txt'
+    conda: 'env.yml'
+    shell:'''
+    python scripts/make_donut.py -k 51 --query {input.reads} --subtract `cat {input.genomes_files} | tr '\n' '\ '`
+    '''
+
+rule assemble_subtracts:
+    input: 'outputs/subtracts/{sample}.fastq.gz.donut.fa'
+    output: 'outputs/megahit/{sample}.contigs.fa'
+    message: '--- Assemble reads from unassigned hashes with MegaHit'
+    log: 'outputs/megahit/{sample}.megahit.log'
+    benchmark: 'benchmarks/{sample}_megahit.benchmark.txt'
+    conda: 'env.yml'
+    params:
+        output_folder = 'outputs/megahit'
+    shell:'''
+    # megahit does not allow force overwrite, so each assembly needs to take place in it's own directory.
+    megahit -r {input} --min-contig-len 200 --out-dir {wildcards.sample} --out-prefix {wildcards.sample} 
+    # move the final assembly to a folder containing all assemblies
+    mv {wildcards.sample}/{wildcards.sample}.contigs.fa {params.output_folder}/{wildcards.sample}.contigs.fa
+    # remove the original megahit assembly folder, which is in the main directory.
+    rm -rf {wildcards.sample}
+    '''
+
+rule prokka_subtract_assemblies:
+    input: 'outputs/megahit/{sample}.contigs.fa'
+    output: 'outputs/prokka/{sample}.faa'
+    message: '--- Annotate megahit assemblies'
+    log: 'outputs/prokka/{sample}.prokka.log'
+    benchmark: 'benchmarks/{sample}_prokka.benchmark.txt'
+    conda: 'env.yml'
+    params: output_folder = 'outputs/prokka'
+    shell:'''
+    prokka {input} --outdir {params.output_folder} --prefix {wildcards.sample} --metagenome --force --locustag {wildcards.sample}
+    touch {output}
+    '''
