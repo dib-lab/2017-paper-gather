@@ -107,7 +107,7 @@ rule find_gather_genome_matches:
                 sigfp = open(file, 'rt')
                 siglist = list(signature.load_signatures(sigfp))
                 loaded_sig = siglist[0]
-                genome_files.append(loaded_sig.d['filename'])
+                genome_files.append('/data/databases/' + loaded_sig.d['filename']) # this requires the databases to be installed at /data/databases directory. We downloaded genbank with ncbi-genome-downloader.
         
         
         with open(str(output), 'w') as file_handler:
