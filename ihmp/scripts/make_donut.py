@@ -12,7 +12,6 @@ would subtract genome1.fa and genome2.fa from neighborhood.fa
 """
 import sys
 import os
-from bbhash_table import BBHashTable
 import khmer
 import argparse
 import screed
@@ -47,18 +46,13 @@ def main(argv=sys.argv[1:]):
         output_suffix = '.donut.fa'
 
     # load k-mers to subtract
-    all_kmers = list()
+    all_kmers = set()
     kh = khmer.Nodetable(args.ksize, 1, 1)
     
     for subtract_fn in args.subtract:
         print('loading:', subtract_fn)
         for record in screed.open(subtract_fn):
-            all_kmers.extend(kh.get_kmer_hashes(record.sequence))
-
-    # now build a minimal perfect hash function for all those k-mers
-    print('building bbhash table')
-    table = BBHashTable(all_kmers, fill=1)
-    del all_kmers
+            all_kmers.update(kh.get_kmer_hashes(record.sequence))
 
     # next, iterate over each input and do subtract
     for queryfile in args.query:
@@ -82,7 +76,7 @@ def main(argv=sys.argv[1:]):
 
             present = 0
             for k in kmers:
-                if table[k]:
+                if k in all_kmers:
                     present += 1
 
             f = present / len(kmers)
