@@ -14,9 +14,8 @@ SAMPLES = ['HSMA33OT',
 import os
                              
 # Association between output files and source links
-links = {
-        'refseq-d2-k51.sbt.json' : 'https://s3-us-west-2.amazonaws.com/sourmash-databases/refseq-d2-k51.tar.gz'} #,
-        #'genbank-d2-k51.sbt.json' : 'https://s3-us-west-2.amazonaws.com/sourmash-databases/genbank-d2-k51.tar.gz'}
+links = {'genbank-d2-k51.sbt.json' : 'https://s3-us-west-2.amazonaws.com/sourmash-databases/genbank-d2-k51.tar.gz'}
+        #'refseq-d2-k51.sbt.json' : 'https://s3-us-west-2.amazonaws.com/sourmash-databases/refseq-d2-k51.tar.gz',
 
 # Make this association accessible via a function of wildcards
 def chainfile2link(wildcards):
@@ -34,8 +33,8 @@ rule download_databases:
     shell:
         '''
         wget {params.link}
-        tar xf refseq-d2-k51.tar.gz -C {params.out_dir}
-        #tar xf genbank-d2-k51.tar.gz -C {params.out_dir}
+        tar xf genbank-d2-k51.tar.gz -C {params.out_dir}
+        #tar xf refseq-d2-k51.tar.gz -C {params.out_dir}
         '''
 
 subworkflow data_snakefile:
@@ -56,23 +55,22 @@ rule kmer_trim_data:
 rule calculate_signatures:
     input: 'outputs/quality/{sample}.fq.gz'
     output:
-        sig = 'outputs/sigmaps/{sample}.scaled2k.sig',
-        sigmap = 'outputs/sigmaps/{sample}.sigmap'
+        sig = 'outputs/sigs/{sample}.scaled2k.sig',
     message: '--- Compute sourmash signatures using quality trimmed data.'
     conda: 'env.yml'
     #singularity: 'docker://quay.io/biocontainers/sourmash:2.0.0a3--py36_0'
-    log: 'outputs/sigmaps/{sample}_compute.log'
+    log: 'outputs/sigs/{sample}_compute.log'
     benchmark: 'benchmarks/{sample}.compute.benchmark.txt'
     shell:'''
-    sourmash compute -o {output.sig} --scaled 2000 -k 21,31,51 --track-abundance --hash-to-reads {output.sigmap} {input}
+    sourmash compute -o {output.sig} --scaled 2000 -k 21,31,51 --track-abundance {input}
     '''
 
 rule gather:
     input: 
-        sig = 'outputs/sigmaps/{sample}.scaled2k.sig',
-        db = 'inputs/databases/refseq-d2-k51.sbt.json'
+        sig = 'outputs/sigs/{sample}.scaled2k.sig',
+        db = 'inputs/databases/genbank-d2-k51.sbt.json'
     output:
-        gather = 'outputs/gather/refseq/{sample}.gather',
+        gather = 'outputs/gather/genbank/{sample}.gather',
         matches = 'outputs/gather/matches/{sample}.matches', 
         un = 'outputs/gather/unassigned/{sample}.un'
     message: '--- Classify signatures with gather.'
@@ -86,29 +84,27 @@ rule gather:
 
 rule find_gather_genome_matches:
     input:
-        gather = 'outputs/gather/refseq/{sample}.gather',
-        db = 'inputs/databases/refseq-d2-k51.sbt.json'
+        gather = 'outputs/gather/genbank/{sample}.gather',
+        db = 'inputs/databases/genbank-d2-k51.sbt.json'
     output: 'outputs/gather_genome_matches/{sample}.txt'
     message: '--- Grab names of genome fasta files that were output as matches by gather'
     log: 'outputs/gather_genome_matches/{sample}_genome_matches.log'
     benchmark: 'benchmarks/{sample}_grab_gather.benchmark.txt'
-    conda: 'env.yml'
     run:
         import pandas as pd
         import os
         import glob
         from sourmash import signature 
         
-        gather = pd.read_csv(str(input))
+        gather = pd.read_csv(str(input.gather))
         
         genome_files = list()
         for md5 in gather['md5']:
-            for file in glob.glob(f'inputs/databases/.sbt.refseq-d2-k51/{md5}'):
+            for file in glob.glob(f'inputs/databases/.sbt.genbank-d2-k51/{md5}'):
                 sigfp = open(file, 'rt')
                 siglist = list(signature.load_signatures(sigfp))
                 loaded_sig = siglist[0]
-                genome_files.append('/data/databases/' + loaded_sig.d['filename']) # this requires the databases to be installed at /data/databases directory. We downloaded genbank with ncbi-genome-downloader.
-        
+                genome_files.append('/data/databases/' + loaded_sig.d['filename']) # this requires the databases to be installed at /data/databases directory. We downloaded genbank with ncbi-genome-downloader. 
         
         with open(str(output), 'w') as file_handler:
             for i in genome_files:
@@ -118,14 +114,14 @@ rule find_gather_genome_matches:
 rule subtract_genomes_from_reads:
     input: 
         genome_files = 'outputs/gather_genome_matches/{sample}.txt',
-        reads = 'inputs/data/{sample}.fastq.gz'
+        reads = data_snakefile('inputs/data/{sample}.fastq.gz')
     output: 'outputs/subtracts/{sample}.fastq.gz.donut.fa'
     message: '--- Subtract genomes found by gather from reads'
     log: 'outputs/subtracts/{sample}.subtract.log'
     benchmark: 'benchmarks/{sample}_subtract_gather_genomes.benchmark.txt'
-    conda: 'env.yml'
     shell:'''
-    python scripts/make_donut.py -k 51 --query {input.reads} --subtract `cat {input.genomes_files} | tr '\n' '\ '`
+    python scripts/make_donut.py -k 51 --query {input.reads} --subtract `cat {input.genome_files} | tr '\n' '\ '`
+    mv {wildcards.sample}.fastq.gz.donut.fa {output}
     '''
 
 rule assemble_subtracts:

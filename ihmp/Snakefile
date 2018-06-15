@@ -4,12 +4,6 @@ include: 'snakefiles/classify.snakefile'
 # variable SAMPLES defined in `snakefiles/classify.snakefile`
 rule all:
     input:
-        expand('outputs/sigmaps/{sample}.scaled2k.sig', sample = SAMPLES),
-        expand('outputs/sigmaps/{sample}.sigmap', sample = SAMPLES),
-        expand('outputs/gather/refseq/{sample}.gather', sample = SAMPLES),
         expand('outputs/gather/matches/{sample}.matches', sample = SAMPLES),
         expand('outputs/gather/unassigned/{sample}.un', sample = SAMPLES),
-        expand('outputs/unassigned/{sample}.un.txt', sample = SAMPLES),
-        expand('outputs/unassigned/{sample}.un.fq', sample = SAMPLES),
-        expand('outputs/megahit/{sample}.contigs.fa', sample = SAMPLES),
         expand('outputs/prokka/{sample}.faa', sample = SAMPLES)
