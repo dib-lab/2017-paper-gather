@@ -41,22 +41,11 @@ subworkflow data_snakefile:
     workdir: "."
     snakefile: "snakefiles/data.snakefile"
 
-rule kmer_trim_data:
-    input: data_snakefile('inputs/data/{sample}.fastq.gz')
-    output: 'outputs/quality/{sample}.fq.gz'
-    message: '--- kmer trim reads'
-    conda: 'env.yml'
-    log: 'outputs/quality/{sample}_trim.log'
-    benchmark: 'benchmarks/{sample}.trim.benchmark.txt'
-    shell:'''
-    trim-low-abund.py -C 4 -Z 18 -V -M 4e9 --gzip -o {output} {input}
-    '''
-
 rule calculate_signatures:
-    input: 'outputs/quality/{sample}.fq.gz'
+    input: data_snakefile('inputs/data/{sample}.fastq.gz')
     output:
         sig = 'outputs/sigs/{sample}.scaled2k.sig',
-    message: '--- Compute sourmash signatures using quality trimmed data.'
+    message: '--- Compute sourmash sigs using quality trimmed data.'
     conda: 'env.yml'
     #singularity: 'docker://quay.io/biocontainers/sourmash:2.0.0a3--py36_0'
     log: 'outputs/sigs/{sample}_compute.log'
@@ -78,10 +67,10 @@ rule gather:
     log: 'outputs/gather/{sample}_gather.log'
     benchmark: 'benchmarks/{sample}.gather.benchmark.txt'
     shell:'''
-    sourmash gather -o {output.gather} --save-matches {output.matches} --output-unassigned {output.un} --scaled 2000 -k 51 --ignore-abundance {input.sig} {input.db}
+    sourmash gather -o {output.gather} --save-matches {output.matches} --output-unassigned {output.un} --scaled 2000 -k 51 {input.sig} {input.db}
+    # note abundance tracking is on. 
     '''
      
-
 rule find_gather_genome_matches:
     input:
         gather = 'outputs/gather/genbank/{sample}.gather',
@@ -134,11 +123,8 @@ rule assemble_subtracts:
     params:
         output_folder = 'outputs/megahit'
     shell:'''
-    # megahit does not allow force overwrite, so each assembly needs to take place in it's own directory.
     megahit -r {input} --min-contig-len 200 --out-dir {wildcards.sample} --out-prefix {wildcards.sample} 
-    # move the final assembly to a folder containing all assemblies
     mv {wildcards.sample}/{wildcards.sample}.contigs.fa {params.output_folder}/{wildcards.sample}.contigs.fa
-    # remove the original megahit assembly folder, which is in the main directory.
     rm -rf {wildcards.sample}
     '''
 
