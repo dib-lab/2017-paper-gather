@@ -1459,7 +1459,7 @@ rule assemble_subtracts:
     params:
         output_folder = 'outputs/megahit'
     shell:'''
-    megahit -r {input} --min-contig-len 200 --out-dir {wildcards.sample} --out-prefix {wildcards.sample} 
+    megahit -r {input} --min-contig-len 500 --out-dir {wildcards.sample} --out-prefix {wildcards.sample} 
     mv {wildcards.sample}/{wildcards.sample}.contigs.fa {params.output_folder}/{wildcards.sample}.contigs.fa
     rm -rf {wildcards.sample}
     '''
